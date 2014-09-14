@@ -1,0 +1,119 @@
+---
+title: "Reproducible Research"
+author: "Sylvia Wotus"
+output: html_document
+---
+
+#### Loading and preprocessing the data
+
+```{r,echo=TRUE}
+data <- read.csv("activity.csv")
+head(data)
+summary(data)
+str(data)
+```
+
+#### The mean total number of steps taken per day
+
+```{r,echo=TRUE}
+library(ggplot2)
+dev.off() #in case some previous plot commands are still active
+stepsDay <- tapply(data$steps, data$date, FUN=sum, na.rm=TRUE)
+
+```
+
+```{r,echo=TRUE}
+qplot(stepsDay, binwidth=1000, xlab="Total number of steps taken per day") +
+        geom_vline(xintercept = c(mean(stepsDay, na.rm=TRUE)), colour = "red", size=1) + 
+        geom_vline(xintercept = c(median(stepsDay, na.rm=TRUE)), colour = "blue", size=1)
+```
+On the graph, the median is represented by the red vertical line and the mean by the blue one
+
+```{r,echo=TRUE}
+mean(stepsDay, na.rm=TRUE)
+median(stepsDay, na.rm=TRUE)
+
+cat("The median is", median(stepsDay, na.rm=TRUE), "while the mean is", mean(stepsDay, na.rm=TRUE), ".\n" )
+```
+
+#### The average daily activity pattern
+
+```{r,echo=TRUE}
+library(ggplot2)
+# aggredate function: splits the data into subsets, computes summary statistics for each, and returns the result in a convenient form.
+
+averageStep<- aggregate(x=list(steps=data$steps),
+                        by=list(interval=data$interval),FUN=mean, na.rm=TRUE)
+
+averageStep[which.max(averageStep$steps),]
+
+ggplot(data=averageStep, aes(x=interval, y=steps)) + geom_line() +
+xlab("5-minute interval") + ylab("Average number of steps taken") + 
+geom_vline(xintercept = c(835), colour = "red", size=1)
+
+```
+
+On the graph, the maximum of steps is represented by the red vertical line, on the interval 835.
+
+#### Imputing missing values
+
+```{r,echo=TRUE}
+missing <-is.na(data$steps)
+sum(missing)
+
+cat("The total missing values for the Step variable are", sum(missing), "which represent", round(((sum(missing)/nrow(data))*100), 2), "% of the entire data set", ".\n")
+
+# Function to file NA
+fillNA <- function(steps, interval) 
+{ filled <- NA
+        if  (!is.na(steps))
+        filled <- c(steps)
+                else 
+        filled <- (averageStep[averageStep$interval==interval, "steps"])
+        return(filled)
+}
+
+updateData <- data
+updateData$steps <- mapply(FUN = fillNA, updateData$steps, updateData$interval)
+
+totalSteps <- tapply(FUN=sum, updateData$steps, updateData$date)
+qplot(totalSteps, binwidth=1000, xlab="Total number of steps taken per day")
+
+cat("The median is", median(totalSteps, na.rm=TRUE), "while the mean is also", mean(totalSteps, na.rm=TRUE), ".\n" )
+```
+
+#### Weekdays vs Weekends 
+
+```{r,echo=TRUE}
+weekdayVSweekend <- function(date) {
+        day <- weekdays(date)
+        if (day %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"))
+        return("weekday")
+        else if (day %in% c("Saturday", "Sunday"))
+        return("weekend")
+        else
+        stop("invalid")
+}
+updateData$date <- as.Date(updateData$date)
+
+updateData$day <- sapply(updateData$date, FUN=weekdayVSweekend)
+averages <- aggregate(steps ~ interval + day, data=updateData, mean)
+ggplot(averages, aes(interval, steps)) + geom_line() + facet_grid(day ~ .) +
+xlab("5 min interval") + ylab("Number of steps")
+
+```
+
+#### Difference between Weekdays and Weekends'days
+
+```{r,echo=TRUE}
+dataDifference<-data.frame(averages$interval)
+dataDifference$weekday<-averages$steps[1:288]
+dataDifference$weekend<-averages$steps[289:576]
+dataDifference$difference<- dataDifference$weekday-dataDifference$weekend
+
+dataDifference$threshold<-factor(ifelse(dataDifference$difference>0, 1,
+                ifelse(dataDifference$difference<0,-1,0)))
+
+ggplot(dataDifference, aes(averages.interval, difference), colour=threshold) + geom_line() + xlab("5 min interval") + ylab("Difference of steps between weekdays and weekends") + geom_hline(yintercept =0, size = 1, linetype=2)
+```
+
